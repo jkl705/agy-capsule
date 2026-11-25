@@ -13,7 +13,7 @@ test('composer discovery verifies the sidecar credential with the local LS, cach
   let now = 100, calls = 0, accepted = false;
   t.mock.method(globalThis, 'fetch', async (url, opts) => {
     calls++;
-    assert.equal(url, 'http://' + env.ANTIGRAVITY_LS_ADDRESS + '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary');
+    assert.equal(url, 'http://' + env.ANTIGRAVITY_LS_ADDRESS + '/exa.language_server_pb.LanguageServerService/GetAllPlugins');
     assert.equal(opts.method, 'POST'); assert.equal(opts.redirect, 'error');
     assert.equal(opts.headers['x-codeium-csrf-token'], 'fixture-session');
     return new Response(null, { status: accepted ? 200 : 403 });
@@ -73,7 +73,7 @@ test('CDP installs code once, skips unchanged payloads, updates on navigation, a
   const target = (id, url, ws = 'ws://127.0.0.1:12345') => ({ id, type: 'page', url, webSocketDebuggerUrl: ws + '/devtools/page/' + id });
   let mixed = false, inspectFails = false;
   globalThis.fetch = async (url, options) => {
-    if (url.endsWith('/RetrieveUserQuotaSummary')) return { ok: options.headers['x-codeium-csrf-token'] === 'fixture-session' };
+    if (url.endsWith('/GetAllPlugins')) return { ok: options.headers['x-codeium-csrf-token'] === 'fixture-session' };
     lists++; return { ok: true, json: async () => pageExists ? [
     target('page', origin + '/'), target('preview', 'https://127.0.0.1:7777/'), target('other-socket', origin + '/', 'ws://127.0.0.1:7777'),
     ...(mixed ? [target('second-page', origin + '/')] : []),

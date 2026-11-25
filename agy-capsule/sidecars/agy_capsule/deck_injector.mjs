@@ -1937,7 +1937,7 @@ export function createComposerOriginResolver(productRoots = [], env = process.en
       // The hub and the sidecar use distinct credentials. Ask the LS itself;
       // never send the sidecar credential to a redirected or non-loopback URL.
       try {
-        const res = await loopbackFetch('http://' + match[1] + ':' + match[2] + '/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary', {
+        const res = await loopbackFetch('http://' + match[1] + ':' + match[2] + '/exa.language_server_pb.LanguageServerService/GetAllPlugins', {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-codeium-csrf-token': token },
           body: '{}', redirect: 'error', signal: AbortSignal.timeout(3000),
         });

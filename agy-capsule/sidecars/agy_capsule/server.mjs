@@ -57,10 +57,6 @@ async function fetchQuota(refresh = false) {
   if (!refresh) {
     return cachedQuota || NO_QUOTA;
   }
-  const now = Date.now();
-  if (cachedQuota && now - lastQuotaFetchMs < QUOTA_TTL_MS) {
-    return cachedQuota;
-  }
   if (quotaPromise) return quotaPromise;
   quotaPromise = loadQuota();
   try { return await quotaPromise; }
