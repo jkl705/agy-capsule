@@ -1341,7 +1341,7 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
     );
     let savingSettings = false;
     let settingsEpoch = 0;
-    let lastData = null, refreshing = false, refreshFailures = 0;
+    let lastData = null, refreshing = false, refreshFailures = 0, pendingQuotaRefresh = !document.hidden;
     let conversationId = null, conversationEpoch = 0;
     let sampleCode = '', sampleCount = 0, healthCode = '';
     let usageData = null;
@@ -1448,6 +1448,8 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
         if (view === 'stats') {
           syncConversation();
           replayStats();
+          pendingQuotaRefresh = true;
+          void refresh();
         }
         fxPreview.setActive(view === 'fx');
         renderHealthNotice();
@@ -2335,8 +2337,11 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
       };
       // The usage history keeps its own, slower pace and never holds up this poll.
       void refreshUsage();
+      const refreshQuota = pendingQuotaRefresh;
+      pendingQuotaRefresh = false;
       try {
-        const res = await postApi('/api/context', { conversationId: convId }, AbortSignal.timeout(6000), isCurrent);
+        const payload = refreshQuota ? { conversationId: convId, refreshQuota: true } : { conversationId: convId };
+        const res = await postApi('/api/context', payload, AbortSignal.timeout(6000), isCurrent);
         if (!res) return;
         const d = await res.json();
         if (!isCurrent() || panelLocked) return;
@@ -2560,6 +2565,16 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
         control.disabled = busy || parentDisabled;
       }
     }
+    function requestQuotaRefresh() {
+      if (panelLocked || document.hidden || sidebarView !== 'stats') return;
+      pendingQuotaRefresh = true;
+      void refresh();
+    }
+    document.addEventListener?.('visibilitychange', () => {
+      if (!document.hidden) requestQuotaRefresh();
+    });
+    window.addEventListener?.('focus', requestQuotaRefresh);
+    document.getElementById('quota-root')?.addEventListener?.('click', requestQuotaRefresh);
     refresh();
     setInterval(refresh, 1000);
   </script>

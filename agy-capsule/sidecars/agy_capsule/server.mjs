@@ -53,7 +53,10 @@ let lastQuotaFetchMs = 0;
 const QUOTA_TTL_MS = 10000;
 let quotaPromise = null;
 
-async function fetchQuota() {
+async function fetchQuota(refresh = false) {
+  if (!refresh) {
+    return cachedQuota || NO_QUOTA;
+  }
   const now = Date.now();
   if (cachedQuota && now - lastQuotaFetchMs < QUOTA_TTL_MS) {
     return cachedQuota;
@@ -125,7 +128,7 @@ function resolveConversationDb(id, allowLatest) {
   return latest;
 }
 
-async function makeEmptyContextResult(health = null) {
+async function makeEmptyContextResult(health = null, { refreshQuota = false } = {}) {
   return {
     health,
     uiVersion: PANEL_VERSION,
@@ -143,7 +146,7 @@ async function makeEmptyContextResult(health = null) {
     turn0Tokens: 0,
     totalOutputTokens: 0,
     totalThinkingTokens: 0,
-    ...await fetchQuota(),
+    ...await fetchQuota(refreshQuota),
   };
 }
 
@@ -171,14 +174,14 @@ function getActiveConversationIds() {
   return [...active];
 }
 
-async function inspectConversation(convId, exact = false, subagentOnly = false, estimate = null) {
+async function inspectConversation(convId, exact = false, subagentOnly = false, estimate = null, options = {}) {
   if (exact && !subagentOnly) lastDeckConvId = convId || '';
   if (subagentOnly && !convId) return null;
   return readSelectedConversation(subagentOnly ? convId : lastDeckConvId ?? convId,
-    !subagentOnly && lastDeckConvId === null, subagentOnly, estimate);
+    !subagentOnly && lastDeckConvId === null, subagentOnly, estimate, options);
 }
 
-async function readSelectedConversation(convId, allowLatest, subagentOnly = false, estimate = null) {
+async function readSelectedConversation(convId, allowLatest, subagentOnly = false, estimate = null, { refreshQuota = false } = {}) {
   touchActiveConversation(convId);
   const dbPath = resolveConversationDb(convId, allowLatest);
   if (subagentOnly && !dbPath) return null;
@@ -192,10 +195,10 @@ async function readSelectedConversation(convId, allowLatest, subagentOnly = fals
         ...cloudSnapshot,
         ...(estimate && { contextEstimate: estimate }),
         prefs,
-        ...await fetchQuota(),
+        ...await fetchQuota(refreshQuota),
       };
     }
-    const empty = await makeEmptyContextResult(conversationDirs.some(dir => statSync(dir, { throwIfNoEntry: false })?.isDirectory()) ? null : { code: 'S3' });
+    const empty = await makeEmptyContextResult(conversationDirs.some(dir => statSync(dir, { throwIfNoEntry: false })?.isDirectory()) ? null : { code: 'S3' }, { refreshQuota });
     return estimate ? { ...empty, contextEstimate: estimate } : empty;
   }
   touchActiveConversation(basename(dbPath, '.db'));
@@ -208,7 +211,7 @@ async function readSelectedConversation(convId, allowLatest, subagentOnly = fals
   if (subagentOnly && !side && !snapshot?.subagent) return null;
   const health = conversationCache.health(dbPath);
   if (!snapshot) {
-    const empty = await makeEmptyContextResult(health);
+    const empty = await makeEmptyContextResult(health, { refreshQuota });
     return estimate ? { ...empty, contextEstimate: estimate } : empty;
   }
   // Prefer a newer measured request if SQLite has already caught up, even
@@ -221,7 +224,7 @@ async function readSelectedConversation(convId, allowLatest, subagentOnly = fals
     ...(showEstimate && { contextEstimate: estimate }),
     ...(side && { subagent: { model: '', side: true } }),
     prefs,
-    ...(subagentOnly && !side ? NO_QUOTA : await fetchQuota()),
+    ...(subagentOnly && !side ? NO_QUOTA : await fetchQuota(refreshQuota)),
   };
 }
 
@@ -275,8 +278,9 @@ export async function startPanel(loadSdk = () => import('sidecar_sdk'), env = pr
     // Full View changes the sidecar's conversation; opening a child tab
     // beside its parent does not. Neither should depend on the last CDP footer.
     const conversationId = data?.conversationId ?? app.config?.conversationId ?? '';
+    const refreshQuota = data?.refreshQuota === true;
     return {
-      ...await readSelectedConversation(conversationId, false, false, deckInjector?.contextEstimate(conversationId)),
+      ...await readSelectedConversation(conversationId, false, false, deckInjector?.contextEstimate(conversationId), { refreshQuota }),
       deckCdp,
       deckCdpInfo: cdpNotice.info(deckCdp),
       availableModels: deckInjector?.models?.(conversationId) ?? [],

@@ -116,7 +116,9 @@ test('App quota hides on explicit empty summary (e.g. custom gateway) but stays 
   let now = 100_000;
   t.mock.method(Date, 'now', () => now);
   let mode = 'error';
+  let fetchCalls = 0;
   t.mock.method(globalThis, 'fetch', async url => {
+    fetchCalls++;
     if (url.endsWith('/RetrieveUserQuotaSummary')) {
       if (mode === 'error') return { ok: false, status: 500 };
       if (mode === 'malformed-null') return { ok: true, json: async () => null };
@@ -134,36 +136,49 @@ test('App quota hides on explicit empty summary (e.g. custom gateway) but stays 
 
   const { inspectConversation: inspect } = await import('../agy-capsule/sidecars/agy_capsule/server.mjs?quota-hide-test');
 
+  // Background polling (without refreshQuota) must never call quota RPCs.
+  const background = await inspect();
+  assert.equal(fetchCalls, 0, 'background inspect must not fetch quota');
+  assert.deepEqual(background.quotaGroups, []);
+  assert.equal(background.hideQuota, false);
+
   for (const bad of ['error', 'malformed-null', 'malformed-array']) {
     mode = bad;
-    const res = await inspect();
+    const res = await inspect(undefined, false, false, null, { refreshQuota: true });
     assert.deepEqual(res.quotaGroups, []);
     assert.equal(res.cloudPaygo, false);
     assert.equal(res.hideQuota, false, bad);
   }
 
   mode = 'empty';
-  const onGatewayEmpty = await inspect();
+  const onGatewayEmpty = await inspect(undefined, false, false, null, { refreshQuota: true });
   assert.deepEqual(onGatewayEmpty.quotaGroups, []);
   assert.equal(onGatewayEmpty.cloudPaygo, false);
   assert.equal(onGatewayEmpty.hideQuota, true);
 
   mode = 'error';
   now += 10_001;
-  const onCachedError = await inspect();
+  const onCachedError = await inspect(undefined, false, false, null, { refreshQuota: true });
   assert.deepEqual(onCachedError.quotaGroups, []);
   assert.equal(onCachedError.hideQuota, true, 'subsequent error keeps cached empty hidden state');
 
   mode = 'empty-wrapped';
   now += 10_001;
-  const onWrappedEmpty = await inspect();
+  const onWrappedEmpty = await inspect(undefined, false, false, null, { refreshQuota: true });
   assert.deepEqual(onWrappedEmpty.quotaGroups, []);
   assert.equal(onWrappedEmpty.hideQuota, true);
 
   mode = 'populated';
   now += 10_001;
-  const onRecovered = await inspect();
+  const onRecovered = await inspect(undefined, false, false, null, { refreshQuota: true });
   assert.equal(onRecovered.quotaGroups.length, 1);
   assert.equal(onRecovered.cloudPaygo, false);
   assert.equal(onRecovered.hideQuota, false);
+
+  // Subsequent background polls after TTL reuse cached quota without calling RPC.
+  const callsAfterRecover = fetchCalls;
+  now += 60_000;
+  const cachedFollowUp = await inspect();
+  assert.equal(fetchCalls, callsAfterRecover, 'expired TTL background poll must not call quota RPC');
+  assert.equal(cachedFollowUp.quotaGroups.length, 1);
 });
