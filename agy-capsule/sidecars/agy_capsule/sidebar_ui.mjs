@@ -175,33 +175,6 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
       align-items: start;
       min-width: 0;
     }
-    .quota-actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 6px;
-    }
-    .quota-refresh-btn {
-      appearance: none;
-      border: 1px solid var(--border, rgba(142, 142, 147, 0.28));
-      background: transparent;
-      color: var(--muted-foreground, #8e8e93);
-      font: inherit;
-      font-size: 12px;
-      line-height: 1.2;
-      padding: 3px 9px;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-    }
-    .quota-refresh-btn:hover:not(:disabled) {
-      color: var(--foreground, #ebebeb);
-      border-color: color-mix(in srgb, var(--foreground, #ebebeb) 36%, transparent);
-      background: rgba(142, 142, 147, 0.12);
-    }
-    .quota-refresh-btn:disabled {
-      opacity: 0.6;
-      cursor: default;
-    }
     .divider:has(+ #quota-root:empty) {
       display: none;
     }
@@ -1051,7 +1024,6 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
         ${presentation.turnMetricsMarkup()}
       </section>
       <div class="divider"></div>
-      <div class="quota-actions"><button type="button" id="quota-refresh-btn" class="quota-refresh-btn">刷新配额</button></div>
       <div id="quota-root" class="stats-quota"></div>
       ${ide ? '<section id="ide-quota-tools" class="ide-tools" hidden><small id="ide-quota-source"></small><button type="button" data-ide-action="cli-quota"></button><small id="ide-cli-status" role="status"></small></section><section id="ide-diagnostics" class="ide-tools" hidden><small id="ide-data-note"></small><button type="button" data-ide-action="data-directory"></button></section>' : ''}
       <section class="stats-usage" id="usage-root" hidden>
@@ -1369,7 +1341,7 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
     );
     let savingSettings = false;
     let settingsEpoch = 0;
-    let lastData = null, refreshing = false, refreshFailures = 0, pendingQuotaRefresh = false, quotaRefreshBusy = false;
+    let lastData = null, refreshing = false, refreshFailures = 0;
     let conversationId = null, conversationEpoch = 0;
     let sampleCode = '', sampleCount = 0, healthCode = '';
     let usageData = null;
@@ -2363,15 +2335,8 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
       };
       // The usage history keeps its own, slower pace and never holds up this poll.
       void refreshUsage();
-      const refreshQuota = pendingQuotaRefresh;
-      pendingQuotaRefresh = false;
-      if (refreshQuota) {
-        quotaRefreshBusy = true;
-        syncQuotaRefreshBtn();
-      }
       try {
-        const payload = refreshQuota ? { conversationId: convId, refreshQuota: true } : { conversationId: convId };
-        const res = await postApi('/api/context', payload, AbortSignal.timeout(6000), isCurrent);
+        const res = await postApi('/api/context', { conversationId: convId }, AbortSignal.timeout(6000), isCurrent);
         if (!res) return;
         const d = await res.json();
         if (!isCurrent() || panelLocked) return;
@@ -2405,13 +2370,7 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
           sampleCount = 0;
           renderHealthNotice();
         }
-      } finally {
-        refreshing = false;
-        if (refreshQuota) {
-          quotaRefreshBusy = false;
-          syncQuotaRefreshBtn();
-        }
-      }
+      } finally { refreshing = false; }
     }
 
     function renderData(d) {
@@ -2601,25 +2560,6 @@ export function createSidebarHtml({ version: CURRENT_VERSION, releasesUrl: RELEA
         control.disabled = busy || parentDisabled;
       }
     }
-    function syncQuotaRefreshBtn() {
-      const btn = document.getElementById('quota-refresh-btn');
-      if (!btn) return;
-      const lang = document.body.dataset.language || prefs.language || 'zh-CN';
-      const label = lang === 'en'
-        ? (quotaRefreshBusy ? 'Refreshing quota…' : 'Refresh quota')
-        : lang === 'zh-TW'
-          ? (quotaRefreshBusy ? '重新整理額度中…' : '刷新額度')
-          : (quotaRefreshBusy ? '刷新配额中…' : '刷新配额');
-      btn.textContent = label;
-      btn.disabled = quotaRefreshBusy || panelLocked;
-    }
-    document.getElementById('quota-refresh-btn')?.addEventListener?.('click', () => {
-      if (panelLocked || quotaRefreshBusy) return;
-      pendingQuotaRefresh = true;
-      syncQuotaRefreshBtn();
-      void refresh();
-    });
-    syncQuotaRefreshBtn();
     refresh();
     setInterval(refresh, 1000);
   </script>
